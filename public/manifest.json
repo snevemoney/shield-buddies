@@ -1,0 +1,18 @@
+{
+  "name": "SENTINEL",
+  "short_name": "SENTINEL",
+  "description": "Offline emergency preparedness for families and groups",
+  "theme_color": "#2563EB",
+  "background_color": "#FAFAFA",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "start_url": "/",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}
