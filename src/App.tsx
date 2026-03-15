@@ -1,27 +1,47 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import React, { useState, useEffect } from 'react';
+import { LanguageProvider } from '@/lib/i18nContext';
+import { ThemeProvider } from '@/lib/themeContext';
+import { seedDatabase } from '@/lib/seed';
+import { AppShell } from '@/components/AppShell';
+import { HomeTab } from '@/components/tabs/HomeTab';
+import { SuppliesTab } from '@/components/tabs/SuppliesTab';
+import { GroupTab } from '@/components/tabs/GroupTab';
+import { MapTab } from '@/components/tabs/MapTab';
+import { IntelTab } from '@/components/tabs/IntelTab';
+import { DroneTab } from '@/components/tabs/DroneTab';
+import { SettingsTab } from '@/components/tabs/SettingsTab';
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
 
-const queryClient = new QueryClient();
+const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('home');
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+  useEffect(() => {
+    seedDatabase();
+  }, []);
+
+  const renderTab = () => {
+    switch (activeTab) {
+      case 'home': return <HomeTab onNavigate={setActiveTab} />;
+      case 'supplies': return <SuppliesTab />;
+      case 'group': return <GroupTab />;
+      case 'map': return <MapTab />;
+      case 'intel': return <IntelTab />;
+      case 'drone': return <DroneTab />;
+      case 'settings': return <SettingsTab />;
+      default: return <HomeTab onNavigate={setActiveTab} />;
+    }
+  };
+
+  return (
+    <ThemeProvider>
+      <LanguageProvider>
+        <Sonner />
+        <AppShell activeTab={activeTab} onTabChange={setActiveTab}>
+          {renderTab()}
+        </AppShell>
+      </LanguageProvider>
+    </ThemeProvider>
+  );
+};
 
 export default App;
