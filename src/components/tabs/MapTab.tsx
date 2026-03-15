@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Plus, Crosshair, Navigation, Trash2 } from 'lucide-react';
+import { Plus, Crosshair, Navigation, Trash2, X } from 'lucide-react';
 import { db, type SavedLocation } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
 import { getCurrentPosition, haversineDistance, logActivity } from '@/lib/utils';
@@ -162,7 +162,7 @@ export const MapTab: React.FC = () => {
                   </p>
                   <button
                     onClick={() => handleDeleteLocation(loc)}
-                    className="text-xs mt-2 flex items-center gap-1 text-red-500"
+                    className="text-xs mt-2 flex items-center gap-1 text-destructive"
                   >
                     <Trash2 size={12} /> {t('delete')}
                   </button>
