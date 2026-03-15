@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Download, Upload, Trash2, Share2, Check } from 'lucide-react';
 import { db } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
-import { useTheme } from '@/lib/themeContext';
+import { useTheme, type Theme } from '@/lib/themeContext';
 import { AppHeader } from '@/components/AppHeader';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -162,7 +162,7 @@ export const SettingsTab: React.FC = () => {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-foreground">{t('theme')}</span>
-            <Select value={theme} onValueChange={(v) => setTheme(v as any)}>
+            <Select value={theme} onValueChange={(v) => setTheme(v as Theme)}>
               <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="light">{t('theme_light')}</SelectItem>

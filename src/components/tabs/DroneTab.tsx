@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion } from 'framer-motion';
 import { Plus, Info } from 'lucide-react';
-import { db } from '@/lib/db';
+import { db, type Detection } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
 import { timeAgo, logActivity } from '@/lib/utils';
 import { AppHeader } from '@/components/AppHeader';
@@ -16,7 +16,11 @@ export const DroneTab: React.FC = () => {
   const { t, language } = useTranslation();
   const [monitoring, setMonitoring] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [form, setForm] = useState({ confidence: 'Low', classification: 'Unknown', durationSeconds: 0 });
+  const [form, setForm] = useState<{
+    confidence: Detection['confidence'];
+    classification: Detection['classification'];
+    durationSeconds: number;
+  }>({ confidence: 'Low', classification: 'Unknown', durationSeconds: 0 });
 
   const detections = useLiveQuery(() => db.detections.orderBy('timestamp').reverse().toArray());
 
@@ -33,8 +37,8 @@ export const DroneTab: React.FC = () => {
   const handleAddDetection = async () => {
     await db.detections.add({
       timestamp: Date.now(),
-      confidence: form.confidence as any,
-      classification: form.classification as any,
+      confidence: form.confidence,
+      classification: form.classification,
       durationSeconds: form.durationSeconds,
       source: 'manual',
     });

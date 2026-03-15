@@ -88,7 +88,7 @@ export interface Detection {
 
 export interface Setting {
   key: string;
-  value: any;
+  value: string | number | boolean;
 }
 
 export interface ChecklistItem {

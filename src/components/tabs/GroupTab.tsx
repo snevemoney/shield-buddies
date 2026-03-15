@@ -221,7 +221,7 @@ export const GroupTab: React.FC = () => {
             className="min-h-[44px] bg-card resize-none"
           />
         </div>
-        <Select value={msgPriority} onValueChange={(v) => setMsgPriority(v as any)}>
+        <Select value={msgPriority} onValueChange={(v) => setMsgPriority(v as 'Normal' | 'Important' | 'SOS')}>
           <SelectTrigger className="w-24">
             <SelectValue />
           </SelectTrigger>
