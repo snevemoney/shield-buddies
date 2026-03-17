@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, ShoppingBag, Users, MapPin, Radio, Radar, Settings, MoreHorizontal } from 'lucide-react';
+import { Home, ShoppingBag, Users, MapPin, Radio, Radar, Settings, MoreHorizontal, AlertTriangle, Shield, BookOpen } from 'lucide-react';
 import { useTranslation } from '@/lib/i18nContext';
-import { cn } from '@/lib/utils';
+import { cn, getCurrentPosition, logActivity } from '@/lib/utils';
+import { useCurrentUserOverdue } from '@/lib/deadManSwitch';
+import { db } from '@/lib/db';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 const tabs = [
   { id: 'home', icon: Home, labelKey: 'nav_home' },
@@ -11,6 +15,7 @@ const tabs = [
   { id: 'map', icon: MapPin, labelKey: 'nav_map' },
   { id: 'intel', icon: Radio, labelKey: 'nav_intel' },
   { id: 'drone', icon: Radar, labelKey: 'nav_drone' },
+  { id: 'vault', icon: BookOpen, labelKey: 'nav_vault' },
   { id: 'settings', icon: Settings, labelKey: 'nav_settings' },
 ];
 
@@ -23,6 +28,20 @@ interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ activeTab, onTabChange, children }) => {
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const currentUserOverdue = useCurrentUserOverdue();
+
+  const handleQuickCheckIn = async () => {
+    const userNameSetting = await db.settings.get('userName');
+    const userName = userNameSetting?.value as string;
+    if (!userName) return;
+    const member = await db.members.where('name').equals(userName).first();
+    if (!member?.id) return;
+    const pos = await getCurrentPosition();
+    await db.members.update(member.id, { lastCheckIn: Date.now(), lastLat: pos.lat, lastLng: pos.lng });
+    await db.checkins.add({ memberId: member.id, timestamp: Date.now(), lat: pos.lat, lng: pos.lng });
+    await logActivity('check_in', `${userName} checked in`, `${userName} s'est signalé`);
+    toast.success(t('check_in'));
+  };
 
   const mobileTabs = tabs.slice(0, 5);
   const moreTabs = tabs.slice(5);
@@ -60,6 +79,15 @@ export const AppShell: React.FC<AppShellProps> = ({ activeTab, onTabChange, chil
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {currentUserOverdue && (
+          <div className="bg-danger text-white px-4 py-3 flex items-center gap-3 shrink-0">
+            <AlertTriangle size={20} className="shrink-0" />
+            <span className="flex-1 text-sm font-medium">{t('dms_you_overdue')}</span>
+            <Button size="sm" variant="secondary" onClick={handleQuickCheckIn} className="shrink-0 gap-1">
+              <Shield size={14} /> {t('check_in')}
+            </Button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
           <AnimatePresence mode="wait">
             <motion.div

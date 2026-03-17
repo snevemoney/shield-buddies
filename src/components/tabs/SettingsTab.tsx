@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Download, Upload, Trash2, Share2, Check } from 'lucide-react';
+import { Download, Upload, Trash2, Share2, Check, MapPin, Loader2 } from 'lucide-react';
 import { db } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
 import { useTheme, type Theme } from '@/lib/themeContext';
@@ -12,6 +12,8 @@ import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { precacheTilesForArea, estimateTileCount, type TileCacheProgress } from '@/lib/tileCacher';
+import { getCurrentPosition } from '@/lib/utils';
 
 const ROLES_EN = ['Leader', 'Member', 'Medic', 'Scout', 'Driver'] as const;
 
@@ -20,12 +22,15 @@ export const SettingsTab: React.FC = () => {
   const { theme, setTheme } = useTheme();
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearConfirm, setClearConfirm] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<TileCacheProgress | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const userName = useLiveQuery(() => db.settings.get('userName'));
   const userRole = useLiveQuery(() => db.settings.get('userRole'));
   const groupName = useLiveQuery(() => db.settings.get('groupName'));
   const safeRadius = useLiveQuery(() => db.settings.get('safeRadius'));
+  const lastMapDownload = useLiveQuery(() => db.settings.get('lastMapDownload'));
   const checklist = useLiveQuery(() => db.checklistItems.orderBy('order').toArray());
 
   const roleLabels = t('roles').split(',');
@@ -110,6 +115,27 @@ export const SettingsTab: React.FC = () => {
     });
   };
 
+  const handleDownloadMaps = async () => {
+    setIsDownloading(true);
+    setDownloadProgress({ total: 0, downloaded: 0, failed: 0, percent: 0 });
+    try {
+      const pos = await getCurrentPosition();
+      const radius = (safeRadius?.value as number) || 5;
+      const result = await precacheTilesForArea(pos.lat, pos.lng, radius, setDownloadProgress);
+      await db.settings.put({ key: 'lastMapDownload', value: Date.now() });
+      if (result.failed > 0) {
+        toast.warning(t('download_failed', { failed: String(result.failed), total: String(result.total) }));
+      } else {
+        toast.success(t('download_complete'));
+      }
+    } catch {
+      toast.error('Download failed');
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(null);
+    }
+  };
+
   const toggleChecklistItem = async (id: number, completed: boolean) => {
     await db.checklistItems.update(id, { completed: !completed });
   };
@@ -184,6 +210,48 @@ export const SettingsTab: React.FC = () => {
               step={1}
             />
           </div>
+        </div>
+      </section>
+
+      {/* Offline Maps */}
+      <section className="mb-6">
+        <h3 className="text-sm font-semibold text-foreground mb-3">{t('offline_maps')}</h3>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">{t('download_maps_desc')}</p>
+          {isDownloading && downloadProgress ? (
+            <div className="space-y-2">
+              <Progress value={downloadProgress.percent} className="h-2" />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 size={12} className="animate-spin" />
+                  {t('downloading_maps')}
+                </span>
+                <span className="text-xs font-mono-data text-muted-foreground">
+                  {t('tiles_downloaded', { downloaded: String(downloadProgress.downloaded), total: String(downloadProgress.total) })}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2"
+                onClick={handleDownloadMaps}
+                disabled={isDownloading}
+              >
+                <MapPin size={18} /> {t('download_maps')}
+              </Button>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{t('estimated_tiles', { count: String(estimateTileCount((safeRadius?.value as number) || 5)) })}</span>
+                <span className="font-mono-data">
+                  {lastMapDownload?.value
+                    ? `${t('last_downloaded')}: ${new Date(lastMapDownload.value as number).toLocaleDateString()}`
+                    : t('maps_not_downloaded')
+                  }
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </section>
 

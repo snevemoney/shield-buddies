@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, RefreshCw, Plane, AlertTriangle, Info } from 'lucide-react';
+import { Plus, RefreshCw, Plane, AlertTriangle, Info, Loader2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { db } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
-import { timeAgo, logActivity } from '@/lib/utils';
+import { timeAgo } from '@/lib/utils';
+import { feedManager, useFeedHealth } from '@/lib/feeds/feedManager';
+import { toast } from 'sonner';
 import { AppHeader } from '@/components/AppHeader';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
@@ -25,27 +27,36 @@ const catColor: Record<string, string> = {
   Local: 'bg-accent text-accent-foreground',
 };
 
-const planeIcon = L.divIcon({
-  className: '',
-  html: `<div style="font-size:20px;transform:rotate(-45deg)">✈️</div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
-});
-
-const MOCK_FLIGHTS = [
-  { pos: [45.52, -73.62] as [number, number], callsign: 'AC123', alt: '35,000ft', speed: '480kts' },
-  { pos: [45.48, -73.50] as [number, number], callsign: 'WS456', alt: '28,000ft', speed: '420kts' },
-  { pos: [45.55, -73.70] as [number, number], callsign: 'QK789', alt: '12,000ft', speed: '280kts' },
-  { pos: [45.45, -73.55] as [number, number], callsign: 'N8432A', alt: '5,000ft', speed: '120kts' },
-];
+function flightIcon(track: number) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="font-size:18px;transform:rotate(${Math.round(track) - 45}deg);line-height:1">✈️</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
 
 export const IntelTab: React.FC = () => {
   const { t, language } = useTranslation();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [form, setForm] = useState({ headline: '', source: '', url: '', category: 'Local', notes: '' });
 
   const intelEntries = useLiveQuery(() => db.intelEntries.orderBy('timestamp').reverse().toArray());
-  const alerts = useLiveQuery(() => db.cachedAlerts.orderBy('cachedAt').reverse().toArray());
+  const newsFromFeeds = useLiveQuery(async () => {
+    const items = await db.cachedAlerts.filter((a) => a.normalizedType === 'news').sortBy('cachedAt');
+    return items.reverse();
+  });
+  const alerts = useLiveQuery(async () => {
+    const all = await db.cachedAlerts.filter((a) => !a.normalizedType || a.normalizedType === 'alert' || a.normalizedType === 'outage').sortBy('cachedAt');
+    return all.reverse();
+  });
+  const flights = useLiveQuery(() => db.cachedAlerts.where('normalizedType').equals('flight').toArray());
+  const naadHealth = useFeedHealth('naad');
+  const hydroHealth = useFeedHealth('hydro');
+  const openSkyHealth = useFeedHealth('opensky');
+  const rssHealth = useFeedHealth('rss');
+  const contradictions = useLiveQuery(() => db.contradictionAlerts.orderBy('createdAt').reverse().limit(5).toArray());
   const catLabels = t('intel_categories').split(',');
 
   const handleAddEntry = async () => {
@@ -53,6 +64,19 @@ export const IntelTab: React.FC = () => {
     await db.intelEntries.add({ headline: form.headline, source: form.source, url: form.url || undefined, category: form.category, notes: form.notes || undefined, timestamp: Date.now() });
     setForm({ headline: '', source: '', url: '', category: 'Local', notes: '' });
     setSheetOpen(false);
+  };
+
+  const handleRefresh = async () => {
+    if (feedManager.adapterCount === 0) {
+      toast.info(t('no_feeds_configured'));
+      return;
+    }
+    setRefreshing(true);
+    try {
+      await feedManager.pollAllFeeds();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const alertLevelStyle = (level: string) => {
@@ -74,25 +98,45 @@ export const IntelTab: React.FC = () => {
 
         <TabsContent value="news" className="flex-1 overflow-y-auto pb-6">
           <div className="space-y-2">
-            {(!intelEntries || intelEntries.length === 0) ? (
-              <p className="text-sm text-muted-foreground text-center py-8">{t('no_intel')}</p>
-            ) : (
-              intelEntries.map((e) => (
-                <div key={e.id} className="bg-card border border-border rounded-xl p-4">
+            {/* Feed news from cachedAlerts */}
+            {(newsFromFeeds ?? []).map((n) => {
+              let feedName = '';
+              try { feedName = n.rawData ? JSON.parse(n.rawData).feedName : ''; } catch { /* */ }
+              return (
+                <div key={`feed-${n.id}`} className="bg-card border border-border rounded-xl p-4">
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <h4 className="text-sm font-semibold text-foreground">{e.headline}</h4>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${catColor[e.category] || 'bg-secondary text-muted-foreground'}`}>
-                      {catLabels[INTEL_CATS_EN.indexOf(e.category)] || e.category}
+                    <h4 className="text-sm font-semibold text-foreground">{n.description}</h4>
+                    <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium shrink-0 uppercase">
+                      {feedName || n.source || 'RSS'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{e.source}</span>
+                    <span>{n.region}</span>
                     <span>·</span>
-                    <span className="font-mono-data">{timeAgo(e.timestamp, language)}</span>
+                    <span className="font-mono-data">{timeAgo(n.issuedAt, language)}</span>
                   </div>
-                  {e.notes && <p className="text-xs text-muted-foreground mt-2">{e.notes}</p>}
                 </div>
-              ))
+              );
+            })}
+            {/* Manual intel entries */}
+            {(intelEntries ?? []).map((e) => (
+              <div key={`manual-${e.id}`} className="bg-card border border-border rounded-xl p-4">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <h4 className="text-sm font-semibold text-foreground">{e.headline}</h4>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${catColor[e.category] || 'bg-secondary text-muted-foreground'}`}>
+                    {catLabels[INTEL_CATS_EN.indexOf(e.category)] || e.category}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{e.source}</span>
+                  <span>·</span>
+                  <span className="font-mono-data">{timeAgo(e.timestamp, language)}</span>
+                </div>
+                {e.notes && <p className="text-xs text-muted-foreground mt-2">{e.notes}</p>}
+              </div>
+            ))}
+            {(newsFromFeeds ?? []).length === 0 && (intelEntries ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">{t('no_intel')}</p>
             )}
           </div>
 
@@ -105,20 +149,67 @@ export const IntelTab: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="alerts" className="flex-1 overflow-y-auto pb-6">
-          <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 flex items-center gap-2 mb-4">
-            <Info size={16} className="text-primary shrink-0" />
-            <span className="text-xs text-primary">{t('live_alerts_banner')}</span>
-            <Button size="sm" variant="outline" className="ml-auto shrink-0 gap-1" disabled>
-              <RefreshCw size={14} /> {t('refresh')}
+          <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 mb-4">
+            <div className="flex items-center gap-2">
+              <Info size={16} className="text-primary shrink-0" />
+              <span className="text-xs text-primary flex-1">
+                {feedManager.adapterCount > 0 ? t('live_alerts_banner') : t('feeds_will_appear')}
+              </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto shrink-0 gap-1"
+              disabled={refreshing}
+              onClick={handleRefresh}
+            >
+              {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {refreshing ? t('refreshing_feeds') : t('refresh')}
             </Button>
+            </div>
+            {feedManager.adapterCount > 0 && (
+              <div className="flex items-center gap-3 mt-2">
+                {[
+                  { name: 'NAAD', health: naadHealth },
+                  { name: 'Hydro', health: hydroHealth },
+                  { name: 'OpenSky', health: openSkyHealth },
+                  { name: 'RSS', health: rssHealth },
+                ].map((f) => (
+                  <div key={f.name} className="flex items-center gap-1">
+                    <div className={`w-2 h-2 rounded-full ${
+                      f.health?.status === 'healthy' ? 'bg-success' :
+                      f.health?.status === 'degraded' ? 'bg-warning' :
+                      f.health?.status === 'unreachable' ? 'bg-danger' : 'bg-muted'
+                    }`} />
+                    <span className="text-[10px] text-muted-foreground">{f.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+          {/* Contradictions */}
+          {(contradictions ?? []).length > 0 && (
+            <div className="space-y-2 mb-4">
+              {(contradictions ?? []).map((c) => (
+                <div key={c.id} className="border-2 border-warning/30 bg-warning/5 rounded-xl p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle size={14} className="text-warning" />
+                    <span className="text-xs font-bold text-warning uppercase">{c.type.replace(/_/g, ' ')}</span>
+                  </div>
+                  <p className="text-xs text-foreground">{language === 'fr' ? c.descriptionFr : c.description}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="space-y-2">
             {(alerts || []).map((a) => (
               <div key={a.id} className={`border rounded-xl p-4 ${alertLevelStyle(a.level)}`}>
                 <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle size={16} className={a.level === 'Warning' ? 'text-danger' : a.level === 'Advisory' ? 'text-warning' : 'text-primary'} />
+                  <AlertTriangle size={16} className={a.level === 'Warning' || a.level === 'Severe' || a.level === 'Extreme' ? 'text-danger' : a.level === 'Advisory' || a.level === 'Moderate' ? 'text-warning' : 'text-primary'} />
                   <span className="text-xs font-bold uppercase">{a.level}</span>
-                  <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded">{t('example')}</span>
+                  {a.source && (
+                    <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded uppercase">{a.source}</span>
+                  )}
                 </div>
                 <div className="text-xs text-muted-foreground mb-1">{a.region}</div>
                 <p className="text-sm text-foreground">{a.description}</p>
@@ -131,8 +222,12 @@ export const IntelTab: React.FC = () => {
         <TabsContent value="flights" className="flex-1 overflow-hidden pb-6">
           <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 flex items-center gap-2 mb-4">
             <Plane size={16} className="text-primary shrink-0" />
-            <div>
-              <span className="text-xs text-primary block">{t('flight_radar_banner')}</span>
+            <div className="flex-1">
+              <span className="text-xs text-primary block">
+                {flights && flights.length > 0
+                  ? t('aircraft_tracked', { count: String(flights.length) })
+                  : t('no_aircraft')}
+              </span>
               <span className="text-[10px] text-muted-foreground">{t('flight_radar_note')}</span>
             </div>
           </div>
@@ -142,17 +237,28 @@ export const IntelTab: React.FC = () => {
                 attribution='&copy; OSM'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-              {MOCK_FLIGHTS.map((f, i) => (
-                <Marker key={i} position={f.pos} icon={planeIcon}>
-                  <Popup>
-                    <div className="text-xs">
-                      <div className="font-bold">{f.callsign}</div>
-                      <div>Alt: {f.alt}</div>
-                      <div>Speed: {f.speed}</div>
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
+              {(flights || []).map((f) => {
+                let meta = { callsign: '', originCountry: '', altitude: 0, velocity: 0, trueTrack: 0 };
+                try { meta = JSON.parse(f.rawData || '{}'); } catch { /* use defaults */ }
+                const altFt = meta.altitude != null ? Math.round(meta.altitude * 3.281) : null;
+                const speedKts = meta.velocity != null ? Math.round(meta.velocity * 1.944) : null;
+                return (
+                  <Marker
+                    key={f.id}
+                    position={[f.lat!, f.lng!]}
+                    icon={flightIcon(meta.trueTrack || 0)}
+                  >
+                    <Popup>
+                      <div className="text-xs min-w-[120px]">
+                        <div className="font-bold">{meta.callsign || '—'}</div>
+                        <div>{meta.originCountry}</div>
+                        {altFt != null && <div>Alt: {altFt.toLocaleString()} ft</div>}
+                        {speedKts != null && <div>Speed: {speedKts} kts</div>}
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
             </MapContainer>
           </div>
         </TabsContent>

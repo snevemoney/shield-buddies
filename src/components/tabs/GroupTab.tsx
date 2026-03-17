@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion } from 'framer-motion';
-import { HeartPulse, Plus, Send, X, AlertTriangle } from 'lucide-react';
+import { HeartPulse, Plus, Send, X, AlertTriangle, QrCode, ScanLine } from 'lucide-react';
+import QRCode from 'qrcode';
 import { db, type Member } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
 import { timeAgo, nameToColor, getCurrentPosition, logActivity } from '@/lib/utils';
@@ -12,7 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
+import { exportGroupData, importGroupData, isMultiPart, parseChunkInfo } from '@/lib/sync/qrSync';
 
 const ROLES_EN = ['Leader', 'Member', 'Medic', 'Scout', 'Driver'] as const;
 
@@ -25,6 +28,14 @@ export const GroupTab: React.FC = () => {
   const [msgText, setMsgText] = useState('');
   const [msgPriority, setMsgPriority] = useState<'Normal' | 'Important' | 'SOS'>('Normal');
   const [checkedIn, setCheckedIn] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [qrCodes, setQrCodes] = useState<string[]>([]);
+  const [currentQrIndex, setCurrentQrIndex] = useState(0);
+  const [scannedChunks, setScannedChunks] = useState<string[]>([]);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scannerRef = useRef<any>(null);
 
   const members = useLiveQuery(() => db.members.toArray());
   const messages = useLiveQuery(() => db.messages.orderBy('timestamp').reverse().toArray());
@@ -86,6 +97,108 @@ export const GroupTab: React.FC = () => {
   const toggleDMS = async (enabled: boolean) => {
     await db.settings.put({ key: 'deadManSwitch', value: enabled });
   };
+
+  const handleShare = async () => {
+    const codes = await exportGroupData();
+    if (codes.length === 0 || (codes.length === 1 && codes[0].length === 0)) {
+      toast.info(t('no_data_to_share'));
+      return;
+    }
+    setQrCodes(codes);
+    setCurrentQrIndex(0);
+    setShareOpen(true);
+  };
+
+  // Render QR code to canvas when share sheet opens or index changes
+  useEffect(() => {
+    if (shareOpen && qrCodes.length > 0 && qrCanvasRef.current) {
+      QRCode.toCanvas(qrCanvasRef.current, qrCodes[currentQrIndex], { width: 280, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+    }
+  }, [shareOpen, qrCodes, currentQrIndex]);
+
+  // Auto-cycle multi-part QR codes
+  useEffect(() => {
+    if (!shareOpen || qrCodes.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentQrIndex((i) => (i + 1) % qrCodes.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [shareOpen, qrCodes.length]);
+
+  const handleScan = () => {
+    setScannedChunks([]);
+    setScanOpen(true);
+  };
+
+  // Start camera scanner when scan sheet opens
+  useEffect(() => {
+    if (!scanOpen || !videoRef.current) return;
+    let stopped = false;
+
+    const startScanner = async () => {
+      try {
+        const QrScanner = (await import('qr-scanner')).default;
+        const scanner = new QrScanner(
+          videoRef.current!,
+          (result: { data: string }) => {
+            if (stopped) return;
+            const data = result.data;
+            setScannedChunks((prev) => {
+              if (prev.includes(data)) return prev;
+              const updated = [...prev, data];
+
+              // Check if we have all parts
+              const info = parseChunkInfo(data);
+              if (info && updated.length >= info.total) {
+                // All chunks collected — import
+                stopped = true;
+                scanner.stop();
+                scanner.destroy();
+                setScanOpen(false);
+                importGroupData(updated).then((summary) => {
+                  toast.success(t('sync_summary', {
+                    members: String(summary.membersAdded + summary.membersUpdated),
+                    messages: String(summary.messagesAdded),
+                    locations: String(summary.locationsAdded),
+                  }));
+                }).catch(() => toast.error(t('sync_error')));
+              } else if (!isMultiPart(data)) {
+                // Single QR — import directly
+                stopped = true;
+                scanner.stop();
+                scanner.destroy();
+                setScanOpen(false);
+                importGroupData([data]).then((summary) => {
+                  toast.success(t('sync_summary', {
+                    members: String(summary.membersAdded + summary.membersUpdated),
+                    messages: String(summary.messagesAdded),
+                    locations: String(summary.locationsAdded),
+                  }));
+                }).catch(() => toast.error(t('sync_error')));
+              }
+
+              return updated;
+            });
+          },
+          { highlightScanRegion: true, highlightCodeOutline: true }
+        );
+        scannerRef.current = scanner;
+        await scanner.start();
+      } catch {
+        toast.error(t('camera_denied'));
+        setScanOpen(false);
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      stopped = true;
+      scannerRef.current?.stop();
+      scannerRef.current?.destroy();
+      scannerRef.current = null;
+    };
+  }, [scanOpen, t]);
 
   // Sort messages: SOS first, then by time
   const sortedMessages = [...(messages || [])].sort((a, b) => {
@@ -155,6 +268,16 @@ export const GroupTab: React.FC = () => {
         </motion.div>
         <span className="text-lg font-bold text-success">{t('check_in')}</span>
       </motion.button>
+
+      {/* QR Sync Buttons */}
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        <Button variant="outline" className="gap-2" onClick={handleShare}>
+          <QrCode size={18} /> {t('share_group')}
+        </Button>
+        <Button variant="outline" className="gap-2" onClick={handleScan}>
+          <ScanLine size={18} /> {t('scan_to_sync')}
+        </Button>
+      </div>
 
       {/* Dead Man's Switch */}
       <div className="bg-card border border-border rounded-xl p-4 mb-4">
@@ -280,12 +403,70 @@ export const GroupTab: React.FC = () => {
                     {detailMember.lastLat.toFixed(4)}, {detailMember.lastLng?.toFixed(4)}
                   </div>
                 )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">{t('check_in_interval')}</span>
+                  <Select
+                    value={String(detailMember.checkInInterval || 43200000)}
+                    onValueChange={(v) => {
+                      if (detailMember.id) {
+                        db.members.update(detailMember.id, { checkInInterval: Number(v) });
+                        setDetailMember({ ...detailMember, checkInInterval: Number(v) });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 4, 8, 12, 24].map((h) => (
+                        <SelectItem key={h} value={String(h * 3600000)}>{t('interval_hours', { count: String(h) })}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button variant="destructive" onClick={() => handleRemoveMember(detailMember)} className="w-full">
                   {t('remove_member')}
                 </Button>
               </div>
             </>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Share QR Sheet */}
+      <Sheet open={shareOpen} onOpenChange={setShareOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl">
+          <SheetHeader><SheetTitle>{t('share_group')}</SheetTitle></SheetHeader>
+          <div className="py-4 flex flex-col items-center gap-3">
+            <canvas ref={qrCanvasRef} />
+            {qrCodes.length > 1 && (
+              <div className="w-full space-y-2">
+                <Progress value={((currentQrIndex + 1) / qrCodes.length) * 100} className="h-1.5" />
+                <div className="text-center text-xs text-muted-foreground">
+                  {t('qr_page', { current: String(currentQrIndex + 1), total: String(qrCodes.length) })}
+                </div>
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground font-mono-data">
+              {t('payload_size', { size: `${(qrCodes.join('').length / 1024).toFixed(1)} KB` })}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Scan QR Sheet */}
+      <Sheet open={scanOpen} onOpenChange={(open) => { if (!open) { scannerRef.current?.stop(); scannerRef.current?.destroy(); } setScanOpen(open); }}>
+        <SheetContent side="bottom" className="rounded-t-2xl">
+          <SheetHeader><SheetTitle>{t('scan_to_sync')}</SheetTitle></SheetHeader>
+          <div className="py-4 space-y-3">
+            <div className="rounded-xl overflow-hidden bg-black aspect-video">
+              <video ref={videoRef} className="w-full h-full object-cover" />
+            </div>
+            <p className="text-sm text-center text-muted-foreground">
+              {scannedChunks.length > 0
+                ? t('scanned_chunk', { current: String(scannedChunks.length), total: String(parseChunkInfo(scannedChunks[0])?.total ?? '?') })
+                : t('scanning_qr')
+              }
+            </p>
+          </div>
         </SheetContent>
       </Sheet>
     </div>
