@@ -29,6 +29,7 @@ export const translations: Record<Language, Record<string, string>> = {
     nav_map: "Map",
     nav_intel: "Intel",
     nav_drone: "Drone",
+    nav_vault: "Vault",
     nav_settings: "Settings",
     nav_more: "More",
 
@@ -273,6 +274,7 @@ export const translations: Record<Language, Record<string, string>> = {
     nav_map: "Carte",
     nav_intel: "Infos",
     nav_drone: "Drone",
+    nav_vault: "Coffre-fort",
     nav_settings: "Paramètres",
     nav_more: "Plus",
 

@@ -112,6 +112,58 @@ export interface HazardZone {
   createdAt: number;
 }
 
+export interface VaultDocument {
+  id?: number;
+  title: string;
+  category: string;
+  content: string;
+  contentHash: string;
+  priority: 'critical' | 'important' | 'reference';
+  sizeBytes: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface VaultDistribution {
+  id?: number;
+  memberId: number;
+  documentId: number;
+  lastSyncedAt: number;
+}
+
+export interface ThreatIndicator {
+  id?: number;
+  category: string;
+  severity: number;
+  timestamp: number;
+  source: string;
+  weight: number;
+  decayRate: number;
+}
+
+export interface HealthScore {
+  id?: number;
+  timestamp: number;
+  overall: number;
+  trend: 'improving' | 'stable' | 'deteriorating';
+}
+
+export interface ThreatPattern {
+  id?: number;
+  pattern: string;
+  detectedAt: number;
+  resolvedAt?: number;
+}
+
+export interface ContradictionAlert {
+  id?: number;
+  type: string;
+  severity: number;
+  description: string;
+  descriptionFr: string;
+  createdAt: number;
+}
+
 export interface Setting {
   key: string;
   value: any;
@@ -140,6 +192,12 @@ export class SentinelDB extends Dexie {
   checklistItems!: Table<ChecklistItem>;
   cachedPOIs!: Table<CachedPOI>;
   hazardZones!: Table<HazardZone>;
+  vaultDocuments!: Table<VaultDocument>;
+  vaultDistribution!: Table<VaultDistribution>;
+  threatIndicators!: Table<ThreatIndicator>;
+  healthScores!: Table<HealthScore>;
+  threatPatterns!: Table<ThreatPattern>;
+  contradictionAlerts!: Table<ContradictionAlert>;
 
   constructor() {
     super('sentinelDB');
@@ -184,6 +242,12 @@ export class SentinelDB extends Dexie {
       checklistItems: '++id, completed, category, order',
       cachedPOIs: '++id, osmId, category',
       hazardZones: '++id, type, severity, active, createdAt',
+      vaultDocuments: '++id, title, category, contentHash, priority, updatedAt',
+      vaultDistribution: '++id, memberId, documentId, lastSyncedAt',
+      threatIndicators: '++id, category, severity, timestamp, source',
+      healthScores: '++id, timestamp, overall',
+      threatPatterns: '++id, pattern, detectedAt, resolvedAt',
+      contradictionAlerts: '++id, type, severity, createdAt',
     });
   }
 }
