@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Download, Upload, Trash2, Share2, Check, MapPin, Loader2, Sparkles } from 'lucide-react';
-import { aiEngine } from '@/lib/ai/inferenceEngine';
+import { Download, Upload, Trash2, Share2, Check } from 'lucide-react';
 import { db } from '@/lib/db';
+import { validateBackupData } from '@/lib/validation';
 import { useTranslation } from '@/lib/i18nContext';
-import { useTheme, type Theme } from '@/lib/themeContext';
+import { useTheme } from '@/lib/themeContext';
 import { AppHeader } from '@/components/AppHeader';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,84 +12,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { precacheTilesForArea, estimateTileCount, type TileCacheProgress } from '@/lib/tileCacher';
-import { getCurrentPosition } from '@/lib/utils';
 
 const ROLES_EN = ['Leader', 'Member', 'Medic', 'Scout', 'Driver'] as const;
-
-const AIAssistantSettings: React.FC = () => {
-  const { t } = useTranslation();
-  const [hasWebGPU, setHasWebGPU] = useState<boolean | null>(null);
-  const [modelReady, setModelReady] = useState(aiEngine.isReady);
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => { aiEngine.checkWebGPU().then(setHasWebGPU); }, []);
-
-  const handleDownload = async () => {
-    setLoading(true);
-    await aiEngine.downloadModel(p => setProgress(p.percentage));
-    setModelReady(aiEngine.isReady);
-    setLoading(false);
-  };
-
-  const handleDelete = async () => {
-    await aiEngine.deleteModel();
-    setModelReady(false);
-  };
-
-  return (
-    <section className="mb-6">
-      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-        <Sparkles size={14} className="text-primary" />
-        {t('ai_assistant')}
-      </h3>
-      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-        <div className="text-xs text-muted-foreground">
-          {hasWebGPU === null ? '...' : hasWebGPU ? `${t('ai_webgpu_supported')} ✓` : t('ai_webgpu_unavailable')}
-        </div>
-        {loading && (
-          <div className="space-y-2">
-            <Progress value={progress} className="h-2" />
-            <p className="text-xs text-muted-foreground">{t('ai_downloading')} {progress}%</p>
-          </div>
-        )}
-        {!modelReady && !loading && hasWebGPU !== false && (
-          <Button variant="outline" size="sm" className="w-full gap-2" onClick={handleDownload}>
-            <Download size={14} /> {t('ai_download_model')}
-          </Button>
-        )}
-        {modelReady && (
-          <>
-            <div className="text-xs text-green-500 font-medium">{t('ai_model_ready')} ✓</div>
-            <Button variant="outline" size="sm" className="w-full gap-2 text-destructive" onClick={handleDelete}>
-              <Trash2 size={14} /> {t('ai_delete_model')}
-            </Button>
-          </>
-        )}
-        {hasWebGPU === false && !modelReady && (
-          <p className="text-xs text-muted-foreground">{t('ai_unavailable')}</p>
-        )}
-      </div>
-    </section>
-  );
-};
 
 export const SettingsTab: React.FC = () => {
   const { t, language, setLanguage } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearConfirm, setClearConfirm] = useState('');
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<TileCacheProgress | null>(null);
+  const [leaderConfirmOpen, setLeaderConfirmOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const userName = useLiveQuery(() => db.settings.get('userName'));
   const userRole = useLiveQuery(() => db.settings.get('userRole'));
   const groupName = useLiveQuery(() => db.settings.get('groupName'));
+  const members = useLiveQuery(() => db.members.toArray());
   const safeRadius = useLiveQuery(() => db.settings.get('safeRadius'));
-  const lastMapDownload = useLiveQuery(() => db.settings.get('lastMapDownload'));
   const checklist = useLiveQuery(() => db.checklistItems.orderBy('order').toArray());
 
   const roleLabels = t('roles').split(',');
@@ -106,6 +46,34 @@ export const SettingsTab: React.FC = () => {
   };
 
   const setSetting = (key: string, value: any) => db.settings.put({ key, value });
+
+  const handleRoleChange = (role: string) => {
+    if (role === 'Leader') {
+      // Check if another member already has the Leader role
+      const existingLeader = (members || []).find((m) => m.role === 'Leader');
+      if (existingLeader) {
+        toast.error(
+          language === 'fr'
+            ? `${existingLeader.name} est déjà chef du groupe. Retirez-le d'abord.`
+            : `${existingLeader.name} is already the group leader. Remove them first.`
+        );
+        return;
+      }
+      // Open confirmation dialog WITHOUT writing to DB first.
+      // Only confirmLeaderRole() writes to DB.
+      setTimeout(() => {
+        setLeaderConfirmOpen(true);
+      }, 200);
+    } else {
+      setSetting('userRole', role);
+    }
+  };
+
+  const confirmLeaderRole = () => {
+    setSetting('userRole', 'Leader');
+    setLeaderConfirmOpen(false);
+    toast.success(language === 'fr' ? 'Rôle de Chef confirmé' : 'Leader role confirmed');
+  };
 
   const handleExport = async () => {
     const data = {
@@ -136,19 +104,27 @@ export const SettingsTab: React.FC = () => {
     if (!file) return;
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-      if (data.supplies) await db.supplies.bulkPut(data.supplies);
-      if (data.members) await db.members.bulkPut(data.members);
-      if (data.messages) await db.messages.bulkPut(data.messages);
-      if (data.locations) await db.locations.bulkPut(data.locations);
-      if (data.activityLog) await db.activityLog.bulkPut(data.activityLog);
-      if (data.intelEntries) await db.intelEntries.bulkPut(data.intelEntries);
-      if (data.settings) await db.settings.bulkPut(data.settings);
-      if (data.checklistItems) await db.checklistItems.bulkPut(data.checklistItems);
-      if (data.detections) await db.detections.bulkPut(data.detections);
+      const raw = JSON.parse(text);
+
+      // Validate against Zod schema before importing
+      const data = validateBackupData(raw);
+
+      // Import ALL tables (including checkins and cachedAlerts)
+      if (data.supplies.length) await db.supplies.bulkPut(data.supplies);
+      if (data.members.length) await db.members.bulkPut(data.members);
+      if (data.messages.length) await db.messages.bulkPut(data.messages);
+      if (data.checkins.length) await db.checkins.bulkPut(data.checkins);
+      if (data.locations.length) await db.locations.bulkPut(data.locations);
+      if (data.activityLog.length) await db.activityLog.bulkPut(data.activityLog);
+      if (data.intelEntries.length) await db.intelEntries.bulkPut(data.intelEntries);
+      if (data.cachedAlerts.length) await db.cachedAlerts.bulkPut(data.cachedAlerts);
+      if (data.detections.length) await db.detections.bulkPut(data.detections);
+      if (data.settings.length) await db.settings.bulkPut(data.settings);
+      if (data.checklistItems.length) await db.checklistItems.bulkPut(data.checklistItems);
       toast.success(t('data_imported'));
-    } catch {
-      toast.error('Import failed');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Import failed';
+      toast.error(`Import failed: ${message.slice(0, 120)}`);
     }
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -172,27 +148,6 @@ export const SettingsTab: React.FC = () => {
     navigator.clipboard.writeText(window.location.origin).then(() => {
       toast.success(t('url_copied'));
     });
-  };
-
-  const handleDownloadMaps = async () => {
-    setIsDownloading(true);
-    setDownloadProgress({ total: 0, downloaded: 0, failed: 0, percent: 0 });
-    try {
-      const pos = await getCurrentPosition();
-      const radius = (safeRadius?.value as number) || 5;
-      const result = await precacheTilesForArea(pos.lat, pos.lng, radius, setDownloadProgress);
-      await db.settings.put({ key: 'lastMapDownload', value: Date.now() });
-      if (result.failed > 0) {
-        toast.warning(t('download_failed', { failed: String(result.failed), total: String(result.total) }));
-      } else {
-        toast.success(t('download_complete'));
-      }
-    } catch {
-      toast.error('Download failed');
-    } finally {
-      setIsDownloading(false);
-      setDownloadProgress(null);
-    }
   };
 
   const toggleChecklistItem = async (id: number, completed: boolean) => {
@@ -220,7 +175,7 @@ export const SettingsTab: React.FC = () => {
             value={(userName?.value as string) || ''}
             onChange={(e) => setSetting('userName', e.target.value)}
           />
-          <Select value={(userRole?.value as string) || 'Member'} onValueChange={(v) => setSetting('userRole', v)}>
+          <Select value={(userRole?.value as string) || 'Member'} onValueChange={handleRoleChange}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {ROLES_EN.map((r, i) => <SelectItem key={r} value={r}>{roleLabels[i] || r}</SelectItem>)}
@@ -247,7 +202,7 @@ export const SettingsTab: React.FC = () => {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-foreground">{t('theme')}</span>
-            <Select value={theme} onValueChange={(v) => setTheme(v as Theme)}>
+            <Select value={theme} onValueChange={(v) => setTheme(v as any)}>
               <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="light">{t('theme_light')}</SelectItem>
@@ -271,51 +226,6 @@ export const SettingsTab: React.FC = () => {
           </div>
         </div>
       </section>
-
-      {/* Offline Maps */}
-      <section className="mb-6">
-        <h3 className="text-sm font-semibold text-foreground mb-3">{t('offline_maps')}</h3>
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-          <p className="text-xs text-muted-foreground">{t('download_maps_desc')}</p>
-          {isDownloading && downloadProgress ? (
-            <div className="space-y-2">
-              <Progress value={downloadProgress.percent} className="h-2" />
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Loader2 size={12} className="animate-spin" />
-                  {t('downloading_maps')}
-                </span>
-                <span className="text-xs font-mono-data text-muted-foreground">
-                  {t('tiles_downloaded', { downloaded: String(downloadProgress.downloaded), total: String(downloadProgress.total) })}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <>
-              <Button
-                variant="outline"
-                className="w-full justify-start gap-2"
-                onClick={handleDownloadMaps}
-                disabled={isDownloading}
-              >
-                <MapPin size={18} /> {t('download_maps')}
-              </Button>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{t('estimated_tiles', { count: String(estimateTileCount((safeRadius?.value as number) || 5)) })}</span>
-                <span className="font-mono-data">
-                  {lastMapDownload?.value
-                    ? `${t('last_downloaded')}: ${new Date(lastMapDownload.value as number).toLocaleDateString()}`
-                    : t('maps_not_downloaded')
-                  }
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
-      {/* AI Assistant */}
-      <AIAssistantSettings />
 
       {/* Checklist */}
       <section className="mb-6">
@@ -406,6 +316,27 @@ export const SettingsTab: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Leader Confirmation AlertDialog — uses AlertDialog instead of Dialog
+           to prevent Radix Select's close event from dismissing it */}
+      <AlertDialog open={leaderConfirmOpen} onOpenChange={(open) => { if (!open) { setLeaderConfirmOpen(false); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{language === 'fr' ? 'Confirmer le rôle de Chef' : 'Confirm Leader Role'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {language === 'fr'
+                ? 'Le rôle de Chef vous donne le pouvoir de modifier le niveau de menace. Confirmez-vous vouloir devenir Chef du groupe ?'
+                : 'The Leader role grants the ability to change the threat level. Are you sure you want to become the group Leader?'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setLeaderConfirmOpen(false); }}>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLeaderRole}>
+              {language === 'fr' ? 'Confirmer' : 'Confirm'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

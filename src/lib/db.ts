@@ -20,7 +20,6 @@ export interface Member {
   lastLat?: number;
   lastLng?: number;
   createdAt: number;
-  checkInInterval?: number;
 }
 
 export interface Message {
@@ -65,7 +64,6 @@ export interface IntelEntry {
   category: string;
   notes?: string;
   timestamp: number;
-  feedSource?: string;
 }
 
 export interface CachedAlert {
@@ -75,13 +73,6 @@ export interface CachedAlert {
   description: string;
   issuedAt: number;
   cachedAt: number;
-  source?: string;
-  normalizedType?: string;
-  severity?: number;
-  lat?: number;
-  lng?: number;
-  expiresAt?: number;
-  rawData?: string;
 }
 
 export interface Detection {
@@ -95,9 +86,19 @@ export interface Detection {
   source: string;
 }
 
+export interface CachedPOI {
+  id?: number;
+  osmId: number;
+  name: string;
+  category: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
 export interface Setting {
   key: string;
-  value: string | number | boolean;
+  value: any;
 }
 
 export interface ChecklistItem {
@@ -107,58 +108,6 @@ export interface ChecklistItem {
   completed: boolean;
   category: string;
   order: number;
-}
-
-export interface VaultDocument {
-  id?: number;
-  title: string;
-  category: string;
-  content: string;
-  contentHash: string;
-  priority: 'critical' | 'important' | 'reference';
-  sizeBytes: number;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface VaultDistribution {
-  id?: number;
-  memberId: number;
-  documentId: number;
-  lastSyncedAt: number;
-}
-
-export interface ThreatIndicator {
-  id?: number;
-  category: string;
-  severity: number;
-  timestamp: number;
-  source: string;
-  weight: number;
-  decayRate: number;
-}
-
-export interface HealthScore {
-  id?: number;
-  timestamp: number;
-  overall: number;
-  trend: 'improving' | 'stable' | 'deteriorating';
-}
-
-export interface ThreatPattern {
-  id?: number;
-  pattern: string;
-  detectedAt: number;
-  resolvedAt?: number;
-}
-
-export interface ContradictionAlert {
-  id?: number;
-  type: string;
-  severity: number;
-  description: string;
-  descriptionFr: string;
-  createdAt: number;
 }
 
 export class SentinelDB extends Dexie {
@@ -173,12 +122,7 @@ export class SentinelDB extends Dexie {
   detections!: Table<Detection>;
   settings!: Table<Setting>;
   checklistItems!: Table<ChecklistItem>;
-  vaultDocuments!: Table<VaultDocument>;
-  vaultDistribution!: Table<VaultDistribution>;
-  threatIndicators!: Table<ThreatIndicator>;
-  healthScores!: Table<HealthScore>;
-  threatPatterns!: Table<ThreatPattern>;
-  contradictionAlerts!: Table<ContradictionAlert>;
+  cachedPOIs!: Table<CachedPOI>;
 
   constructor() {
     super('sentinelDB');
@@ -195,7 +139,6 @@ export class SentinelDB extends Dexie {
       settings: 'key',
       checklistItems: '++id, completed, category, order',
     });
-
     this.version(2).stores({
       supplies: '++id, name, category, expirationDate, createdAt',
       members: '++id, name, role, lastCheckIn',
@@ -203,61 +146,12 @@ export class SentinelDB extends Dexie {
       checkins: '++id, memberId, timestamp',
       locations: '++id, name, category, createdAt',
       activityLog: '++id, type, timestamp',
-      intelEntries: '++id, category, timestamp, feedSource',
-      cachedAlerts: '++id, level, cachedAt, source, normalizedType, severity',
+      intelEntries: '++id, category, timestamp',
+      cachedAlerts: '++id, level, cachedAt',
       detections: '++id, confidence, classification, timestamp',
       settings: 'key',
       checklistItems: '++id, completed, category, order',
-    });
-
-    this.version(3).stores({
-      supplies: '++id, name, category, expirationDate, createdAt',
-      members: '++id, name, role, lastCheckIn, checkInInterval',
-      messages: '++id, senderName, priority, timestamp',
-      checkins: '++id, memberId, timestamp',
-      locations: '++id, name, category, createdAt',
-      activityLog: '++id, type, timestamp',
-      intelEntries: '++id, category, timestamp, feedSource',
-      cachedAlerts: '++id, level, cachedAt, source, normalizedType, severity',
-      detections: '++id, confidence, classification, timestamp',
-      settings: 'key',
-      checklistItems: '++id, completed, category, order',
-    });
-
-    this.version(4).stores({
-      supplies: '++id, name, category, expirationDate, createdAt',
-      members: '++id, name, role, lastCheckIn, checkInInterval',
-      messages: '++id, senderName, priority, timestamp',
-      checkins: '++id, memberId, timestamp',
-      locations: '++id, name, category, createdAt',
-      activityLog: '++id, type, timestamp',
-      intelEntries: '++id, category, timestamp, feedSource',
-      cachedAlerts: '++id, level, cachedAt, source, normalizedType, severity',
-      detections: '++id, confidence, classification, timestamp',
-      settings: 'key',
-      checklistItems: '++id, completed, category, order',
-      vaultDocuments: '++id, title, category, contentHash, priority, updatedAt',
-      vaultDistribution: '++id, memberId, documentId, lastSyncedAt',
-    });
-
-    this.version(5).stores({
-      supplies: '++id, name, category, expirationDate, createdAt',
-      members: '++id, name, role, lastCheckIn, checkInInterval',
-      messages: '++id, senderName, priority, timestamp',
-      checkins: '++id, memberId, timestamp',
-      locations: '++id, name, category, createdAt',
-      activityLog: '++id, type, timestamp',
-      intelEntries: '++id, category, timestamp, feedSource',
-      cachedAlerts: '++id, level, cachedAt, source, normalizedType, severity',
-      detections: '++id, confidence, classification, timestamp',
-      settings: 'key',
-      checklistItems: '++id, completed, category, order',
-      vaultDocuments: '++id, title, category, contentHash, priority, updatedAt',
-      vaultDistribution: '++id, memberId, documentId, lastSyncedAt',
-      threatIndicators: '++id, category, severity, timestamp, source',
-      healthScores: '++id, timestamp, overall',
-      threatPatterns: '++id, pattern, detectedAt, resolvedAt',
-      contradictionAlerts: '++id, type, severity, createdAt',
+      cachedPOIs: '++id, osmId, category',
     });
   }
 }

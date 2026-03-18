@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+// POI_MARKER_TEST
+import React, { useState, useEffect, useRef } from 'react'; // v11.1-poi
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Plus, Crosshair, Navigation, Trash2, X } from 'lucide-react';
-import { db, type SavedLocation, type CachedAlert } from '@/lib/db';
+import { db, type SavedLocation } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
 import { getCurrentPosition, haversineDistance, logActivity } from '@/lib/utils';
+import { POILayer, POI_CATEGORIES, type POICategory } from '@/components/map/POILayer';
+import { POIToggleBar } from '@/components/map/POIToggleBar';
 import { AppHeader } from '@/components/AppHeader';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
@@ -43,20 +46,6 @@ function userIcon() {
   });
 }
 
-const SEVERITY_COLORS: Record<number, string> = {
-  0: '#6B7280', 1: '#3B82F6', 2: '#EAB308', 3: '#F97316', 4: '#EF4444',
-};
-
-function alertIcon(severity: number) {
-  const color = SEVERITY_COLORS[severity] ?? '#6B7280';
-  return L.divIcon({
-    className: '',
-    html: `<div style="width:20px;height:20px;border-radius:4px;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center"><span style="color:white;font-size:12px;font-weight:bold">!</span></div>`,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  });
-}
-
 const MapCenterUpdater: React.FC<{ center: [number, number] }> = ({ center }) => {
   const map = useMap();
   useEffect(() => { map.setView(center, map.getZoom()); }, [center, map]);
@@ -71,13 +60,12 @@ export const MapTab: React.FC = () => {
   const [mapCenter, setMapCenter] = useState<[number, number]>([45.5017, -73.5673]);
   const [form, setForm] = useState({ name: '', category: 'Safe Zone', notes: '' });
   const [filters, setFilters] = useState<Set<string>>(new Set(CATEGORIES_EN));
+  const [poisEnabled, setPoisEnabled] = useState(false);
+  const [poiCategories, setPoiCategories] = useState<Set<POICategory>>(new Set(POI_CATEGORIES));
   const mapRef = useRef<L.Map | null>(null);
 
   const locations = useLiveQuery(() => db.locations.toArray());
   const safeRadius = useLiveQuery(() => db.settings.get('safeRadius'));
-  const geoAlerts = useLiveQuery(() =>
-    db.cachedAlerts.filter((a) => a.lat != null && a.lng != null).toArray()
-  );
   const radius = ((safeRadius?.value as number) || 5) * 1000;
 
   const catLabels = t('map_categories').split(',');
@@ -121,6 +109,17 @@ export const MapTab: React.FC = () => {
     setFilters(next);
   };
 
+  const togglePOICategory = (cat: POICategory) => {
+    const next = new Set(poiCategories);
+    if (next.has(cat)) next.delete(cat);
+    else next.add(cat);
+    setPoiCategories(next);
+  };
+
+  const togglePoisEnabled = () => {
+    setPoisEnabled((v) => !v);
+  };
+
   const filteredLocations = (locations || []).filter((l) => filters.has(l.category));
 
   return (
@@ -144,6 +143,14 @@ export const MapTab: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {/* POI filter bar */}
+      <POIToggleBar
+        visibleCategories={poiCategories}
+        onToggle={togglePOICategory}
+        poisEnabled={poisEnabled}
+        onToggleAll={togglePoisEnabled}
+      />
 
       {/* Map */}
       <div className="flex-1 relative">
@@ -187,20 +194,9 @@ export const MapTab: React.FC = () => {
               </Popup>
             </Marker>
           ))}
-          {(geoAlerts || []).map((a) => (
-            <Marker key={`alert-${a.id}`} position={[a.lat!, a.lng!]} icon={alertIcon(a.severity ?? 0)}>
-              <Popup>
-                <div className="min-w-[140px]">
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className="text-xs font-bold uppercase">{a.level}</span>
-                    {a.source && <span className="text-[10px] opacity-60 uppercase">· {a.source}</span>}
-                  </div>
-                  <p className="text-xs">{a.description}</p>
-                  <p className="text-[10px] opacity-60 mt-1">{a.region}</p>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+          {poisEnabled && (
+            <POILayer visibleCategories={poiCategories} userPos={userPos} />
+          )}
           <MapCenterUpdater center={mapCenter} />
         </MapContainer>
 
