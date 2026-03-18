@@ -31,6 +31,7 @@ export async function autoDetectKiwix(): Promise<string | null> {
 }
 
 export async function testConnection(baseUrl: string): Promise<boolean> {
+  if (!navigator.onLine) return false;
   try {
     const res = await fetch(`${baseUrl}/catalog/v2/root.xml`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return false;
@@ -42,6 +43,7 @@ export async function testConnection(baseUrl: string): Promise<boolean> {
 }
 
 export async function fetchCatalog(baseUrl: string): Promise<ZimEntry[]> {
+  if (!navigator.onLine) return [];
   const res = await fetch(`${baseUrl}/catalog/v2/root.xml`, { signal: AbortSignal.timeout(10000) });
   const text = await res.text();
   const parser = new DOMParser();
@@ -63,6 +65,7 @@ export async function fetchCatalog(baseUrl: string): Promise<ZimEntry[]> {
 }
 
 export async function searchArticles(baseUrl: string, query: string): Promise<SearchResult[]> {
+  if (!navigator.onLine) return [];
   const res = await fetch(`${baseUrl}/search?pattern=${encodeURIComponent(query)}`, {
     signal: AbortSignal.timeout(10000),
     headers: { Accept: 'application/json' },
@@ -103,6 +106,7 @@ export async function fetchArticle(baseUrl: string, path: string): Promise<strin
   const cached = await db.settings.get(cacheKey);
   if (cached?.value && typeof cached.value === 'string') return cached.value;
 
+  if (!navigator.onLine) return cached?.value as string || '';
   const url = path.startsWith('http') ? path : `${baseUrl}${path}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
   const html = await res.text();

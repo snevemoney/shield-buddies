@@ -7,6 +7,7 @@ import { useCurrentUserOverdue } from '@/lib/deadManSwitch';
 import { db } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { AIChat } from '@/components/AIChat';
 
 const tabs = [
   { id: 'home', icon: Home, labelKey: 'nav_home' },
@@ -167,6 +168,7 @@ export const AppShell: React.FC<AppShellProps> = ({ activeTab, onTabChange, chil
           </div>
         </div>
       </nav>
+      <AIChat />
     </div>
   );
 };

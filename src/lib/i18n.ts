@@ -410,6 +410,20 @@ export const translations: Record<Language, Record<string, string>> = {
     kb_legal: "Emergency Legal Rights",
     kb_legal_desc: "Rights during emergencies, martial law, property protection, insurance",
 
+    // AI Assistant
+    ai_assistant: "AI Assistant",
+    ai_webgpu_supported: "WebGPU: Supported",
+    ai_webgpu_unavailable: "WebGPU: Not available — AI requires Chrome 113+ or Edge 113+",
+    ai_download_model: "Download AI Model (~270 MB)",
+    ai_model_ready: "Model: Ready",
+    ai_model_not_downloaded: "Download the AI model to enable offline emergency assistance",
+    ai_downloading: "Downloading model...",
+    ai_delete_model: "Delete Model",
+    ai_chat_placeholder: "Ask SENTINEL...",
+    ai_unavailable: "AI assistant is not available on this device — requires WebGPU support",
+    ai_new_chat: "New Chat",
+    ai_thinking: "Thinking...",
+
     // Threat Intelligence
     democratic_health: "Democratic Health Index",
     no_threat_indicators: "No threat indicators detected",
@@ -820,6 +834,20 @@ export const translations: Record<Language, Record<string, string>> = {
     kb_electronics_desc: "Panneaux solaires, batteries, circuits radio, systèmes d'alimentation",
     kb_legal: "Droits juridiques en urgence",
     kb_legal_desc: "Droits pendant les urgences, loi martiale, protection des biens, assurances",
+
+    // Assistant IA
+    ai_assistant: "Assistant IA",
+    ai_webgpu_supported: "WebGPU : Pris en charge",
+    ai_webgpu_unavailable: "WebGPU : Non disponible — l'IA nécessite Chrome 113+ ou Edge 113+",
+    ai_download_model: "Télécharger le modèle IA (~270 Mo)",
+    ai_model_ready: "Modèle : Prêt",
+    ai_model_not_downloaded: "Téléchargez le modèle IA pour activer l'assistance d'urgence hors ligne",
+    ai_downloading: "Téléchargement du modèle...",
+    ai_delete_model: "Supprimer le modèle",
+    ai_chat_placeholder: "Demandez à SENTINEL...",
+    ai_unavailable: "L'assistant IA n'est pas disponible sur cet appareil — nécessite le support WebGPU",
+    ai_new_chat: "Nouvelle conversation",
+    ai_thinking: "Réflexion...",
 
     // Intelligence des menaces
     democratic_health: "Indice de santé démocratique",

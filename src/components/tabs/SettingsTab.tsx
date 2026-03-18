@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Download, Upload, Trash2, Share2, Check, MapPin, Loader2 } from 'lucide-react';
+import { Download, Upload, Trash2, Share2, Check, MapPin, Loader2, Sparkles } from 'lucide-react';
+import { aiEngine } from '@/lib/ai/inferenceEngine';
 import { db } from '@/lib/db';
 import { useTranslation } from '@/lib/i18nContext';
 import { useTheme, type Theme } from '@/lib/themeContext';
@@ -16,6 +17,64 @@ import { precacheTilesForArea, estimateTileCount, type TileCacheProgress } from 
 import { getCurrentPosition } from '@/lib/utils';
 
 const ROLES_EN = ['Leader', 'Member', 'Medic', 'Scout', 'Driver'] as const;
+
+const AIAssistantSettings: React.FC = () => {
+  const { t } = useTranslation();
+  const [hasWebGPU, setHasWebGPU] = useState<boolean | null>(null);
+  const [modelReady, setModelReady] = useState(aiEngine.isReady);
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => { aiEngine.checkWebGPU().then(setHasWebGPU); }, []);
+
+  const handleDownload = async () => {
+    setLoading(true);
+    await aiEngine.downloadModel(p => setProgress(p.percentage));
+    setModelReady(aiEngine.isReady);
+    setLoading(false);
+  };
+
+  const handleDelete = async () => {
+    await aiEngine.deleteModel();
+    setModelReady(false);
+  };
+
+  return (
+    <section className="mb-6">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <Sparkles size={14} className="text-primary" />
+        {t('ai_assistant')}
+      </h3>
+      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <div className="text-xs text-muted-foreground">
+          {hasWebGPU === null ? '...' : hasWebGPU ? `${t('ai_webgpu_supported')} ✓` : t('ai_webgpu_unavailable')}
+        </div>
+        {loading && (
+          <div className="space-y-2">
+            <Progress value={progress} className="h-2" />
+            <p className="text-xs text-muted-foreground">{t('ai_downloading')} {progress}%</p>
+          </div>
+        )}
+        {!modelReady && !loading && hasWebGPU !== false && (
+          <Button variant="outline" size="sm" className="w-full gap-2" onClick={handleDownload}>
+            <Download size={14} /> {t('ai_download_model')}
+          </Button>
+        )}
+        {modelReady && (
+          <>
+            <div className="text-xs text-green-500 font-medium">{t('ai_model_ready')} ✓</div>
+            <Button variant="outline" size="sm" className="w-full gap-2 text-destructive" onClick={handleDelete}>
+              <Trash2 size={14} /> {t('ai_delete_model')}
+            </Button>
+          </>
+        )}
+        {hasWebGPU === false && !modelReady && (
+          <p className="text-xs text-muted-foreground">{t('ai_unavailable')}</p>
+        )}
+      </div>
+    </section>
+  );
+};
 
 export const SettingsTab: React.FC = () => {
   const { t, language, setLanguage } = useTranslation();
@@ -254,6 +313,9 @@ export const SettingsTab: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* AI Assistant */}
+      <AIAssistantSettings />
 
       {/* Checklist */}
       <section className="mb-6">

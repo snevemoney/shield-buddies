@@ -11,6 +11,7 @@ export const openSkyAdapter: FeedAdapter = {
   get pollIntervalMs() { return currentInterval; },
 
   async fetch(): Promise<OsintEvent[]> {
+    if (!navigator.onLine) return [];
     const res = await fetch(BASE_URL, { signal: AbortSignal.timeout(15000) });
 
     if (res.status === 429) {
