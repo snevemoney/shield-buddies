@@ -19,6 +19,7 @@ export const POI_CATEGORIES = [
   'place_of_worship',
   'school',
   'community_centre',
+  'ev_charger',
 ] as const;
 
 export type POICategory = (typeof POI_CATEGORIES)[number];
@@ -36,6 +37,7 @@ export const POI_COLORS: Record<POICategory, string> = {
   place_of_worship: '#A855F7', // purple
   school: '#F59E0B',         // amber
   community_centre: '#EC4899', // pink
+  ev_charger: '#14B8A6',      // teal
 };
 
 /** Emoji per category for icon rendering */
@@ -51,6 +53,7 @@ const POI_EMOJI: Record<POICategory, string> = {
   place_of_worship: '⛪',
   school: '🏫',
   community_centre: '🏛️',
+  ev_charger: '🔌',
 };
 
 /** Pre-computed icons for all POI categories — built once at module load */

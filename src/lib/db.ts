@@ -96,6 +96,22 @@ export interface CachedPOI {
   lng: number;
 }
 
+export type HazardType = 'flood' | 'fire' | 'industrial' | 'earthquake';
+export type HazardSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface HazardZone {
+  id?: number;
+  name: string;
+  type: HazardType;
+  geometry: {
+    center: [number, number]; // [lat, lng]
+    radiusMeters: number;
+  };
+  severity: HazardSeverity;
+  active: boolean;
+  createdAt: number;
+}
+
 export interface Setting {
   key: string;
   value: any;
@@ -123,6 +139,7 @@ export class SentinelDB extends Dexie {
   settings!: Table<Setting>;
   checklistItems!: Table<ChecklistItem>;
   cachedPOIs!: Table<CachedPOI>;
+  hazardZones!: Table<HazardZone>;
 
   constructor() {
     super('sentinelDB');
@@ -152,6 +169,21 @@ export class SentinelDB extends Dexie {
       settings: 'key',
       checklistItems: '++id, completed, category, order',
       cachedPOIs: '++id, osmId, category',
+    });
+    this.version(3).stores({
+      supplies: '++id, name, category, expirationDate, createdAt',
+      members: '++id, name, role, lastCheckIn',
+      messages: '++id, senderName, priority, timestamp',
+      checkins: '++id, memberId, timestamp',
+      locations: '++id, name, category, createdAt',
+      activityLog: '++id, type, timestamp',
+      intelEntries: '++id, category, timestamp',
+      cachedAlerts: '++id, level, cachedAt',
+      detections: '++id, confidence, classification, timestamp',
+      settings: 'key',
+      checklistItems: '++id, completed, category, order',
+      cachedPOIs: '++id, osmId, category',
+      hazardZones: '++id, type, severity, active, createdAt',
     });
   }
 }

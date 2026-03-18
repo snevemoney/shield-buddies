@@ -24,6 +24,7 @@ const OSM_TAGS = [
   'amenity=place_of_worship',
   'amenity=school',
   'amenity=community_centre',
+  'amenity=charging_station',
 ];
 
 /** Map OSM tag values to our POI category keys */
@@ -39,6 +40,7 @@ function tagToCategory(tags: Record<string, string>): string {
   if (tags.amenity === 'place_of_worship') return 'place_of_worship';
   if (tags.amenity === 'school') return 'school';
   if (tags.amenity === 'community_centre') return 'community_centre';
+  if (tags.amenity === 'charging_station') return 'ev_charger';
   return 'unknown';
 }
 
